@@ -1,4 +1,4 @@
-# uav-auto-labeler
+# UAV-Auto-Labeler
 
 Auto-labeling tool for aerial/UAV imagery using a YOLOv8 model (`yolov8x-visdrone`) fine-tuned on the VisDrone dataset. Generates YOLO-format labels by merging the `pedestrian` and `people` classes into a single `person` class (id `0`), via batched GPU inference. The model is automatically downloaded from Hugging Face Hub if not present locally.
 

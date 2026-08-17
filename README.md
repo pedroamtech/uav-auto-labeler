@@ -29,7 +29,7 @@ All paths and parameters are set in [config.py](config.py), without touching `ma
 | `MODEL_FILE` | Local path where the `.pt` model file is stored/looked up             |
 | `IMG_DIR`    | Folder with the input images to label                                 |
 | `LABEL_DIR`  | Output folder where `.txt` labels are written (YOLO format)           |
-| `CLASSES`    | VisDrone class IDs to detect (`0`=pedestrian, `1`=people)             |
+| `CLASSES`    | Fixed to `[0, 1]` (VisDrone pedestrian + people, merged into `person`). This project only labels `person` — do not add other VisDrone classes |
 | `CONF`       | Minimum detection confidence                                          |
 | `IMGSZ`      | Model input resolution (do not change: must match VisDrone training)  |
 | `DEVICE`     | Inference device (`0` for GPU, `"cpu"` for CPU)                       |

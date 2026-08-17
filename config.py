@@ -14,7 +14,11 @@ IMG_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/AutoDA-UAV
 LABEL_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/AutoDA-UAV/train/labels")
 
 # --- Inference parameters ---
-CLASSES = [0, 1]   # VisDrone: 0=pedestrian, 1=people (merged into class 0 "person")
+# This project only detects "person": VisDrone classes 0 (pedestrian) and
+# 1 (people) merged into a single output class 0. main.py writes every
+# matched box as label 0 regardless of which of these two IDs it came
+# from, so do not add other VisDrone classes (car, van, bus, etc.) here.
+CLASSES = [0, 1]
 CONF = 0.25         # minimum detection confidence
 IMGSZ = 640         # input resolution — matches VisDrone training, do not change
 DEVICE = 0          # GPU index (use "cpu" for CPU inference)

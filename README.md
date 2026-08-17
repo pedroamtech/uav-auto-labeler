@@ -71,3 +71,7 @@ Labeling complete.
   Total detections:        5210
   Labels saved to:         C:/.../train/labels
 ```
+
+## Related projects
+
+- [yolo-dataset-toolkit](https://github.com/pedroamtech/yolo-dataset-toolkit) — cleaning, validation, visualization, and analysis utilities for YOLO datasets. Useful as a follow-up step to review and QA the labels generated here.

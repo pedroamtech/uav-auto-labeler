@@ -1,73 +1,73 @@
 # uav-auto-labeler
 
-Herramienta de auto-etiquetado para imagenes aereas/UAV usando un modelo YOLOv8 (`yolov8x-visdrone`) afinado sobre el dataset VisDrone. Genera etiquetas en formato YOLO fusionando las clases `pedestrian` y `people` en una unica clase `person` (id `0`), mediante inferencia por lotes en GPU. El modelo se descarga automaticamente desde Hugging Face Hub si no esta presente localmente.
+Auto-labeling tool for aerial/UAV imagery using a YOLOv8 model (`yolov8x-visdrone`) fine-tuned on the VisDrone dataset. Generates YOLO-format labels by merging the `pedestrian` and `people` classes into a single `person` class (id `0`), via batched GPU inference. The model is automatically downloaded from Hugging Face Hub if not present locally.
 
-## Estructura
+## Structure
 
-- [main.py](main.py) — punto de entrada. Descarga el modelo si falta, corre la inferencia y escribe las etiquetas. No requiere modificaciones para uso normal.
-- [config.py](config.py) — toda la configuracion editable: rutas del dataset, modelo y parametros de inferencia.
-- [requirements.txt](requirements.txt) — dependencias de Python.
+- [main.py](main.py) — entry point. Downloads the model if missing, runs inference, and writes the labels. No changes needed for normal use.
+- [config.py](config.py) — all editable configuration: dataset paths, model, and inference parameters.
+- [requirements.txt](requirements.txt) — Python dependencies.
 
-## Requisitos
+## Requirements
 
 - Python 3.9+
-- GPU con CUDA (opcional, ver `DEVICE` en la configuracion para usar CPU)
+- CUDA-capable GPU (optional, see `DEVICE` in the config to use CPU)
 
-Instalar dependencias:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Configuracion
+## Configuration
 
-Todas las rutas y parametros se ajustan en [config.py](config.py), sin tocar `main.py`:
+All paths and parameters are set in [config.py](config.py), without touching `main.py`:
 
-| Variable     | Descripcion                                                          |
+| Variable     | Description                                                          |
 |--------------|-----------------------------------------------------------------------|
-| `HF_REPO`    | Repositorio de Hugging Face del que se descarga el modelo             |
-| `MODEL_FILE` | Ruta local donde se guarda/busca el archivo `.pt` del modelo          |
-| `IMG_DIR`    | Carpeta con las imagenes de entrada a etiquetar                       |
-| `LABEL_DIR`  | Carpeta de salida donde se escriben las etiquetas `.txt` (formato YOLO) |
-| `CLASSES`    | IDs de clase VisDrone a detectar (`0`=pedestrian, `1`=people)         |
-| `CONF`       | Confianza minima de deteccion                                         |
-| `IMGSZ`      | Resolucion de entrada del modelo (no cambiar: debe coincidir con el entrenamiento VisDrone) |
-| `DEVICE`     | Dispositivo de inferencia (`0` para GPU, `"cpu"` para CPU)            |
-| `BATCH`      | Tamano de batch, ajustar segun VRAM disponible                        |
+| `HF_REPO`    | Hugging Face repository the model is downloaded from                  |
+| `MODEL_FILE` | Local path where the `.pt` model file is stored/looked up             |
+| `IMG_DIR`    | Folder with the input images to label                                 |
+| `LABEL_DIR`  | Output folder where `.txt` labels are written (YOLO format)           |
+| `CLASSES`    | VisDrone class IDs to detect (`0`=pedestrian, `1`=people)             |
+| `CONF`       | Minimum detection confidence                                          |
+| `IMGSZ`      | Model input resolution (do not change: must match VisDrone training)  |
+| `DEVICE`     | Inference device (`0` for GPU, `"cpu"` for CPU)                       |
+| `BATCH`      | Batch size, adjust based on available VRAM                            |
 
-Para etiquetar un dataset distinto, solo hay que editar `IMG_DIR` y `LABEL_DIR` en `config.py`.
+To label a different dataset, just edit `IMG_DIR` and `LABEL_DIR` in `config.py`.
 
-## Uso
+## Usage
 
 ```bash
 python main.py
 ```
 
-El script:
+The script:
 
-1. Verifica si el modelo (`MODEL_FILE`) existe localmente; si no, lo descarga desde `HF_REPO`.
-2. Crea `LABEL_DIR` si no existe.
-3. Corre inferencia en streaming/batch sobre todas las imagenes de `IMG_DIR`, mostrando una barra de progreso (`tqdm`).
-4. Por cada imagen, escribe un archivo `.txt` en `LABEL_DIR` con una linea por deteccion en formato YOLO normalizado:
+1. Checks whether the model (`MODEL_FILE`) exists locally; if not, downloads it from `HF_REPO`.
+2. Creates `LABEL_DIR` if it doesn't exist.
+3. Runs streaming/batched inference over all images in `IMG_DIR`, showing a progress bar (`tqdm`).
+4. For each image, writes a `.txt` file in `LABEL_DIR` with one line per detection in normalized YOLO format:
 
    ```
    0 x_center y_center width height
    ```
 
-   donde `0` es la clase `person` (fusion de `pedestrian` + `people`) y las coordenadas estan normalizadas entre 0 y 1.
+   where `0` is the `person` class (merge of `pedestrian` + `people`) and the coordinates are normalized between 0 and 1.
 
-La consola muestra el progreso paso a paso (descarga/carga del modelo, conteo de imagenes, barra de avance) y un resumen final con el total de imagenes procesadas, imagenes con detecciones y detecciones totales:
+The console shows step-by-step progress (model download/load, image count, progress bar) and a final summary with total images processed, images with detections, and total detections:
 
 ```
-[1/3] Modelo local encontrado: yolov8x-visdrone.pt
-[2/3] Cargando modelo...
-      842 imagenes encontradas en C:/.../train/images
-[3/3] Etiquetando imagenes...
-Etiquetando: 100%|██████████| 842/842 [02:14<00:00,  6.28img/s]
+[1/3] Local model found: yolov8x-visdrone.pt
+[2/3] Loading model...
+      842 images found in C:/.../train/images
+[3/3] Labeling images...
+Labeling: 100%|██████████| 842/842 [02:14<00:00,  6.28img/s]
 
-Etiquetado completo.
-  Imagenes procesadas:      842
-  Imagenes con detecciones: 731
-  Detecciones totales:      5210
-  Etiquetas guardadas en:   C:/.../train/labels
+Labeling complete.
+  Images processed:        842
+  Images with detections:  731
+  Total detections:        5210
+  Labels saved to:         C:/.../train/labels
 ```

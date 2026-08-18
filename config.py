@@ -10,8 +10,8 @@ HF_REPO = "mshamrai/yolov8x-visdrone"
 MODEL_FILE = Path("yolov8x-visdrone.pt")
 
 # --- Dataset paths ---
-IMG_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/AutoDA-UAV/train/images")
-LABEL_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/AutoDA-UAV/train/labels")
+IMG_DIR = Path("/Users/pedroam/Movies/Cenidet-UAV/images")
+LABEL_DIR = Path("/Users/pedroam/Movies/Cenidet-UAV/labels")
 
 # --- Inference parameters ---
 # This project only detects "person": VisDrone classes 0 (pedestrian) and
@@ -21,5 +21,6 @@ LABEL_DIR = Path("C:/Users/pedroam/Documents/Data-Augmentation/Datasets/AutoDA-U
 CLASSES = [0, 1]
 CONF = 0.25         # minimum detection confidence
 IMGSZ = 640         # input resolution — matches VisDrone training, do not change
-DEVICE = 0          # GPU index (use "cpu" for CPU inference)
+# DEVICE = 0          # GPU index (use "cpu" for CPU inference)
+DEVICE = "mps"      # Apple Silicon GPU (use "cpu" for CPU inference)
 BATCH = 16          # batch size — adjust based on available VRAM

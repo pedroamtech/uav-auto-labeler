@@ -23,7 +23,7 @@ SOURCE = Path(r"C:\Users\pedroam\Documents\Dataset\Okutama-Action")
 LABELS = None
 
 # --- Inference parameters ---
-CONF = 0.25         # minimum detection confidence for a box to be written
+CONF = 0.45         # minimum detection confidence for a box to be written
 IMGSZ = 640         # inference resolution (matches VisDrone training)
 DEVICE = None        # None = auto (CUDA if available, else CPU). Also: "cpu", "mps", 0
 BATCH = 16          # batch size — adjust based on available VRAM

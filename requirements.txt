@@ -1,6 +1,37 @@
-# NOTE: `ultralytics` is intentionally NOT listed here.
-# weights/best.pt requires the YOLOv12 repo's ultralytics fork (v8.3.63),
-# installed with `pip install -e <YOLOv12 repo>`. See README "Environment setup".
-# Installing the PyPI `ultralytics` package will break weight loading.
+# Full dependency set for this project.
+#
+#   Run from the project root, WITH the YOLOv12 repo cloned next to it:
+#     GitHub/
+#       uav-auto-labeler/   <- you are here
+#       YOLOv12/            <- https://github.com/pedroamtech/YOLOv12
+#
+#   conda create -n uav-auto-labeler python=3.11 -y
+#   conda activate uav-auto-labeler
+#   pip install -r requirements.txt
+#
+# See README "Environment setup" for details.
 
+# --- PyTorch: CUDA 12.8 builds (RTX 50-series / Blackwell, sm_120) ------------
+# The extra index serves the +cu128 wheels; PyPI serves everything else.
+# For CPU-only, drop the extra index and the +cu128 suffixes.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+
+# --- YOLOv12 "ultralytics" fork (reports v8.3.63) ----------------------------
+# REQUIRED to load weights/best.pt (trained with this fork; its AAttn block
+# uses a fused `qkv` layer that the PyPI `ultralytics` package lacks).
+# Not on PyPI -> editable install from the sibling clone of
+# https://github.com/pedroamtech/YOLOv12 . This also pulls numpy,
+# opencv-python, pillow, pyyaml, scipy, pandas, matplotlib, tqdm, etc.
+-e ../YOLOv12
+
+# --- Exact training dependency set -----------------------------------------
+# The YOLOv12 fork was trained on Windows with this pinned list (timm,
+# albumentations, onnx/onnxruntime-gpu, supervision, wandb, gradio, ...).
+# Pulled in so inference runs against the same package versions as training.
+# torch/torchvision are intentionally NOT in that file (handled above).
+-r ../YOLOv12/requirements-windows.txt
+
+# --- This project -----------------------------------------------------------
 tqdm

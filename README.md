@@ -18,7 +18,8 @@ appended as an extra column so you can filter the candidates before using them.
 ## Requirements
 
 - Anaconda / Miniconda
-- Python 3.11
+- **Python 3.11** (required — the training dependency list pins
+  `onnxruntime-gpu==1.18.0`, which has no wheel for 3.12+)
 - NVIDIA GPU with recent drivers (CPU works but is slow). The reference setup
   is an RTX 5060 Ti (Blackwell, `sm_120`) → **CUDA 12.8 wheels** (`cu128`).
 - Trained weights at `weights/best.pt` (or pass `--weights`)
@@ -26,48 +27,53 @@ appended as an extra column so you can filter the candidates before using them.
 ### Why the environment is not just `pip install ultralytics`
 
 `weights/best.pt` was trained with **YOLOv12-small** using the
-[YOLOv12 repo](https://github.com/sunsmarterjie/yolov12)'s **bundled
-`ultralytics` fork** (reports version `8.3.63`; its `AAttn` attention block
-uses a fused `qkv` layer). Mainline `ultralytics` from PyPI (8.3.78+ / 8.4.x)
-ships a different YOLOv12 attention block (`AAttn` with separate `qk` + `v`),
-so it **cannot load these weights** and fails with:
+[pedroamtech/YOLOv12](https://github.com/pedroamtech/YOLOv12) fork (a fork of
+[sunsmarterjie/yolov12](https://github.com/sunsmarterjie/yolov12)) and its
+**bundled `ultralytics` fork** (reports version `8.3.63`; its `AAttn`
+attention block uses a fused `qkv` layer). Mainline `ultralytics` from PyPI
+(8.3.78+ / 8.4.x) ships a different YOLOv12 attention block (`AAttn` with
+separate `qk` + `v`), so it **cannot load these weights** and fails with:
 
 ```
 AttributeError: 'AAttn' object has no attribute 'qkv'. Did you mean: 'qk'?
 ```
 
-So the environment for this project must install the **YOLOv12 fork of
-`ultralytics`**, not the PyPI package. That is why `requirements.txt` here
-does *not* list `ultralytics`.
+So this project installs the **YOLOv12 fork of `ultralytics`** (via
+`-e ../YOLOv12` in `requirements.txt`) instead of the PyPI `ultralytics`
+package — never `pip install ultralytics` into this environment.
 
 ## Environment setup (Anaconda)
 
-You need a local clone of the YOLOv12 repo (the same one used for training).
-In the reference setup it lives at `C:\Users\pedroam\Documents\GitHub\YOLOv12`;
-adjust `YOLOV12_DIR` below if yours differs.
+Clone the YOLOv12 repo **next to this one** (they must be siblings — the
+`-e ../YOLOv12` line in `requirements.txt` depends on it):
+
+```
+GitHub/
+  uav-auto-labeler/   <- this repo
+  YOLOv12/            <- https://github.com/pedroamtech/YOLOv12
+```
+
+Then, from the `uav-auto-labeler` root:
 
 ```powershell
-# 0. Get the YOLOv12 repo if you don't have it
-#    git clone https://github.com/sunsmarterjie/yolov12 C:\Users\pedroam\Documents\GitHub\YOLOv12
-$YOLOV12_DIR = "C:\Users\pedroam\Documents\GitHub\YOLOv12"
+git clone https://github.com/pedroamtech/YOLOv12 ../YOLOv12   # if you don't have it
 
-# 1. Fresh conda env
 conda create -n uav-auto-labeler python=3.11 -y
 conda activate uav-auto-labeler
 
-# 2. PyTorch FIRST, from the CUDA 12.8 index (cu124 does NOT work on sm_120)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-
-# 3. The YOLOv12 ultralytics fork, editable (provides `import ultralytics` 8.3.63)
-pip install -e $YOLOV12_DIR
-
-# 4. The fork's extra deps (Windows list: no flash_attn, onnxruntime-gpu only)
-pip install -r "$YOLOV12_DIR\requirements-windows.txt"
-#    On Linux use:  pip install -r "$YOLOV12_DIR/requirements.txt"
-
-# 5. This project's own deps
 pip install -r requirements.txt
 ```
+
+`requirements.txt` installs **everything** in one shot:
+
+- the CUDA 12.8 build of `torch` / `torchvision`;
+- the YOLOv12 `ultralytics` fork, editable from `../YOLOv12` (also pulls
+  numpy / opencv / pillow / pyyaml / scipy / pandas / matplotlib / tqdm);
+- `-r ../YOLOv12/requirements-windows.txt` — the exact pinned list the fork
+  was **trained** with on Windows (timm, albumentations, onnx /
+  onnxruntime-gpu, supervision, wandb, gradio, ...), so inference runs
+  against the same versions as training;
+- `tqdm`.
 
 Verify:
 
@@ -76,6 +82,10 @@ python -c "import ultralytics, torch; print(ultralytics.__version__, ultralytics
 # -> 8.3.63  ...\GitHub\YOLOv12\ultralytics\__init__.py
 # -> cuda True
 ```
+
+CPU-only or a different CUDA version: edit the `torch` lines in
+`requirements.txt` (drop `--extra-index-url` and the `+cu128` suffixes for
+CPU, or swap `cu128` for your toolkit, e.g. `cu124`).
 
 > `FlashAttention is not available on this device. Using scaled_dot_product_attention instead.`
 > is expected on Windows and harmless — PyTorch SDPA is used as the fallback.

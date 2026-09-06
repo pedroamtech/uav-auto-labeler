@@ -1,75 +1,175 @@
 # UAV Auto Labeler: Automatic Person Pre-Labeling for Aerial Imagery Datasets
 
-Auto-labeling tool for aerial/UAV imagery using a YOLOv8 model (`yolov8x-visdrone`) fine-tuned on the VisDrone dataset. Generates YOLO-format labels by merging the `pedestrian` and `people` classes into a single `person` class (id `0`), via batched GPU inference. The model is automatically downloaded from Hugging Face Hub if not present locally.
+Auto-labeling tool for aerial/UAV imagery using a locally trained **YOLOv12**
+model (single class `person`, id `0`; trained on VisDrone reduced to `nc: 1`,
+`names: ['person']`). It runs inference over an unannotated dataset and writes
+YOLO-format **pseudo-labels** next to the images, with the detection confidence
+appended as an extra column so you can filter the candidates before using them.
+
+> These are model-generated candidate labels, **not** verified ground truth.
+> The script does not validate against any existing annotations.
 
 ## Structure
 
-- [main.py](main.py) — entry point. Downloads the model if missing, runs inference, and writes the labels. No changes needed for normal use.
-- [config.py](config.py) — all editable configuration: dataset paths, model, and inference parameters.
+- [main.py](main.py) — entry point. Loads the model, runs inference, writes the labels.
+- [config.py](config.py) — default values for every CLI flag.
 - [requirements.txt](requirements.txt) — Python dependencies.
 
 ## Requirements
 
-- Python 3.9+
-- CUDA-capable GPU (optional, see `DEVICE` in the config to use CPU)
+- Anaconda / Miniconda
+- Python 3.11
+- NVIDIA GPU with recent drivers (CPU works but is slow). The reference setup
+  is an RTX 5060 Ti (Blackwell, `sm_120`) → **CUDA 12.8 wheels** (`cu128`).
+- Trained weights at `weights/best.pt` (or pass `--weights`)
 
-Install dependencies:
+### Why the environment is not just `pip install ultralytics`
 
-```bash
+`weights/best.pt` was trained with **YOLOv12-small** using the
+[YOLOv12 repo](https://github.com/sunsmarterjie/yolov12)'s **bundled
+`ultralytics` fork** (reports version `8.3.63`; its `AAttn` attention block
+uses a fused `qkv` layer). Mainline `ultralytics` from PyPI (8.3.78+ / 8.4.x)
+ships a different YOLOv12 attention block (`AAttn` with separate `qk` + `v`),
+so it **cannot load these weights** and fails with:
+
+```
+AttributeError: 'AAttn' object has no attribute 'qkv'. Did you mean: 'qk'?
+```
+
+So the environment for this project must install the **YOLOv12 fork of
+`ultralytics`**, not the PyPI package. That is why `requirements.txt` here
+does *not* list `ultralytics`.
+
+## Environment setup (Anaconda)
+
+You need a local clone of the YOLOv12 repo (the same one used for training).
+In the reference setup it lives at `C:\Users\pedroam\Documents\GitHub\YOLOv12`;
+adjust `YOLOV12_DIR` below if yours differs.
+
+```powershell
+# 0. Get the YOLOv12 repo if you don't have it
+#    git clone https://github.com/sunsmarterjie/yolov12 C:\Users\pedroam\Documents\GitHub\YOLOv12
+$YOLOV12_DIR = "C:\Users\pedroam\Documents\GitHub\YOLOv12"
+
+# 1. Fresh conda env
+conda create -n uav-auto-labeler python=3.11 -y
+conda activate uav-auto-labeler
+
+# 2. PyTorch FIRST, from the CUDA 12.8 index (cu124 does NOT work on sm_120)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# 3. The YOLOv12 ultralytics fork, editable (provides `import ultralytics` 8.3.63)
+pip install -e $YOLOV12_DIR
+
+# 4. The fork's extra deps (Windows list: no flash_attn, onnxruntime-gpu only)
+pip install -r "$YOLOV12_DIR\requirements-windows.txt"
+#    On Linux use:  pip install -r "$YOLOV12_DIR/requirements.txt"
+
+# 5. This project's own deps
 pip install -r requirements.txt
 ```
 
-## Configuration
+Verify:
 
-All paths and parameters are set in [config.py](config.py), without touching `main.py`:
+```powershell
+python -c "import ultralytics, torch; print(ultralytics.__version__, ultralytics.__file__); print('cuda', torch.cuda.is_available())"
+# -> 8.3.63  ...\GitHub\YOLOv12\ultralytics\__init__.py
+# -> cuda True
+```
 
-| Variable     | Description                                                          |
-|--------------|-----------------------------------------------------------------------|
-| `HF_REPO`    | Hugging Face repository the model is downloaded from                  |
-| `MODEL_FILE` | Local path where the `.pt` model file is stored/looked up             |
-| `IMG_DIR`    | Folder with the input images to label                                 |
-| `LABEL_DIR`  | Output folder where `.txt` labels are written (YOLO format)           |
-| `CLASSES`    | Fixed to `[0, 1]` (VisDrone pedestrian + people, merged into `person`). This project only labels `person` — do not add other VisDrone classes |
-| `CONF`       | Minimum detection confidence                                          |
-| `IMGSZ`      | Model input resolution (do not change: must match VisDrone training)  |
-| `DEVICE`     | Inference device (`0` for GPU, `"cpu"` for CPU)                       |
-| `BATCH`      | Batch size, adjust based on available VRAM                            |
+> `FlashAttention is not available on this device. Using scaled_dot_product_attention instead.`
+> is expected on Windows and harmless — PyTorch SDPA is used as the fallback.
 
-To label a different dataset, just edit `IMG_DIR` and `LABEL_DIR` in `config.py`.
+If you already have the training env (e.g. a conda env named `yolov12`), you
+can just reuse it and skip the steps above:
+
+```powershell
+C:\Users\pedroam\anaconda3\envs\yolov12\python.exe main.py
+```
+
+As an alternative to matching versions, export the model to ONNX/TorchScript
+from the training environment and point `--weights` at the exported file.
+
+## Dataset layout
+
+Point `--source` at the dataset root (the folder that contains `images`).
+Labels are written to a sibling `labels` folder, mirroring any subfolders:
+
+```
+D:\Dataset\Okutama-Action\
+  images\  Drone1\ Morning\ ... \frame.jpg
+  labels\  Drone1\ Morning\ ... \frame.txt   <- created by the script
+```
+
+You can also pass `--source` the `images` folder directly. If the source path
+has no `images` folder, pass `--labels <folder>` to set the output explicitly.
 
 ## Usage
 
-```bash
-python main.py
+```powershell
+conda activate uav-auto-labeler          # or use the training env's python directly
+
+# quick end-to-end test first
+python main.py --limit 20
+
+# full run
+python main.py --source C:\Users\pedroam\Documents\Dataset\Okutama-Action
 ```
 
-The script:
+Common overrides:
 
-1. Checks whether the model (`MODEL_FILE`) exists locally; if not, downloads it from `HF_REPO`.
-2. Creates `LABEL_DIR` if it doesn't exist.
-3. Runs streaming/batched inference over all images in `IMG_DIR`, showing a progress bar (`tqdm`).
-4. For each image, writes a `.txt` file in `LABEL_DIR` with one line per detection in normalized YOLO format:
+```powershell
+python main.py --source D:\Dataset\Okutama-Action --conf 0.35 --device 0
+python main.py --source D:\Dataset\Okutama-Action --batch 8          # lower if the GPU stalls / OOMs
+python main.py --source D:\Dataset\Okutama-Action --save-empty       # empty .txt when no detection
+python main.py --source D:\some\folder --labels D:\some\folder_labels
+```
 
-   ```
-   0 x_center y_center width height
-   ```
+All flags (`python main.py --help`):
 
-   where `0` is the `person` class (merge of `pedestrian` + `people`) and the coordinates are normalized between 0 and 1.
+| Flag           | Default (from `config.py`)                          | Description |
+|----------------|----------------------------------------------------|-------------|
+| `--source`     | `C:\Users\pedroam\Documents\Dataset\Okutama-Action` | Dataset root (with an `images` folder) or an images folder; searched recursively |
+| `--labels`     | derived (`images` -> `labels`)                      | Explicit output folder for the `.txt` files |
+| `--weights`    | `weights/best.pt`                                   | Trained `.pt` weights |
+| `--conf`       | `0.25`                                              | Minimum detection confidence |
+| `--imgsz`      | `640`                                               | Inference resolution |
+| `--device`     | auto (`cuda:0` if available, else `cpu`)            | `cpu`, `mps`, CUDA index (`0`), or unset for auto |
+| `--batch`      | `16`                                               | Images per inference batch; lower it on GPU stalls (Windows CUDA sysmem fallback) or OOM |
+| `--limit`      | `0`                                                | Process only the first N images (`0` = all); for a quick test |
+| `--save-empty` | off                                                | Also write an empty `.txt` for images with no detection |
+| `--verbose`    | off                                                | Per-image Ultralytics logs |
 
-The console shows step-by-step progress (model download/load, image count, progress bar) and a final summary with total images processed, images with detections, and total detections:
+## Output
+
+One `.txt` per image (with detections), in the `labels` tree that mirrors
+`images`. One line per detection, all bbox values normalized 0-1:
 
 ```
-[1/3] Local model found: yolov8x-visdrone.pt
-[2/3] Loading model...
-      842 images found in C:/.../train/images
-[3/3] Labeling images...
-Labeling: 100%|██████████| 842/842 [02:14<00:00,  6.28img/s]
+0 x_center y_center width height confidence
+```
+
+By default no file is written for images with zero detections; pass
+`--save-empty` to create empty `.txt` files for those too.
+
+The console prints where the labels went plus a summary:
+
+```
+[1/3] Loading model: weights\best.pt
+[2/3] Images:  18103 under C:\Users\pedroam\Documents\Dataset\Okutama-Action\images
+      Labels:  C:\Users\pedroam\Documents\Dataset\Okutama-Action\labels
+      conf=0.25  imgsz=640  batch=16  device=cuda:0
+[3/3] Labeling images...  (the first batch also does model/GPU warm-up, so the bar can sit at 0% for a bit)
+Labeling: 100%|██████████| 18103/18103 [12:41<00:00, 23.8img/s]
 
 Labeling complete.
-  Images processed:        842
-  Images with detections:  731
-  Total detections:        5210
-  Labels saved to:         C:/.../train/labels
+  Images processed:          18103
+  Images with detections:    15980
+  Images without detections: 2123  (no .txt written)
+  Total detections:          98123
+  Elapsed:                   761.2s  (23.8 img/s)
+  Labels saved to:           C:\Users\pedroam\Documents\Dataset\Okutama-Action\labels
+  Line format:               <class> x_center y_center width height confidence  (normalized 0-1)
 ```
 
 ## Related projects

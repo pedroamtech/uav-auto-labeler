@@ -1,3 +1,6 @@
-ultralytics
-huggingface_hub
+# NOTE: `ultralytics` is intentionally NOT listed here.
+# weights/best.pt requires the YOLOv12 repo's ultralytics fork (v8.3.63),
+# installed with `pip install -e <YOLOv12 repo>`. See README "Environment setup".
+# Installing the PyPI `ultralytics` package will break weight loading.
+
 tqdm

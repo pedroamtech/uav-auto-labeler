@@ -1,26 +1,29 @@
-"""Configuration for uav-auto-labeler.
+"""Default configuration for uav-auto-labeler.
 
-Edit the paths and inference parameters in this file. main.py should not
-need any changes to adapt the pipeline to a new dataset or machine.
+Every value here is just a default: it can be overridden from the command
+line (see `python main.py --help`). Edit this file if you want to change
+the defaults permanently without passing flags each run.
 """
 from pathlib import Path
 
-# --- Model (Hugging Face Hub) ---
-HF_REPO = "mshamrai/yolov8x-visdrone"
-MODEL_FILE = Path("yolov8x-visdrone.pt")
+# --- Model ---
+# Locally trained YOLOv12 weights. Single class: nc=1, names=['person'] (index 0).
+WEIGHTS = Path("weights/best.pt")
 
-# --- Dataset paths ---
-IMG_DIR = Path("/Users/pedroam/Movies/Cenidet-UAV/images")
-LABEL_DIR = Path("/Users/pedroam/Movies/Cenidet-UAV/labels")
+# --- Input ---
+# Dataset root OR an images folder. If the path contains an "images" folder,
+# labels are written to a sibling "labels" folder, mirroring subfolders:
+#   D:\Dataset\Okutama-Action\images\...\frame.jpg
+#   -> D:\Dataset\Okutama-Action\labels\...\frame.txt
+SOURCE = Path(r"C:\Users\pedroam\Documents\Dataset\Okutama-Action")
+
+# --- Output ---
+# Leave as None to use the "images" -> "labels" rule above. Set an explicit
+# path (or pass --labels) only if the source has no "images" folder.
+LABELS = None
 
 # --- Inference parameters ---
-# This project only detects "person": VisDrone classes 0 (pedestrian) and
-# 1 (people) merged into a single output class 0. main.py writes every
-# matched box as label 0 regardless of which of these two IDs it came
-# from, so do not add other VisDrone classes (car, van, bus, etc.) here.
-CLASSES = [0, 1]
-CONF = 0.25         # minimum detection confidence
-IMGSZ = 640         # input resolution — matches VisDrone training, do not change
-# DEVICE = 0          # GPU index (use "cpu" for CPU inference)
-DEVICE = "mps"      # Apple Silicon GPU (use "cpu" for CPU inference)
+CONF = 0.25         # minimum detection confidence for a box to be written
+IMGSZ = 640         # inference resolution (matches VisDrone training)
+DEVICE = None        # None = auto (CUDA if available, else CPU). Also: "cpu", "mps", 0
 BATCH = 16          # batch size — adjust based on available VRAM

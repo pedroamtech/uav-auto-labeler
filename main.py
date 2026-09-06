@@ -6,13 +6,12 @@ images, following the standard dataset layout:
 
     <dataset>/images/<...>/frame.jpg  ->  <dataset>/labels/<...>/frame.txt
 
-Each label line is::
+Each label line is standard normalized YOLO::
 
-    0 x_center y_center width height confidence
+    0 x_center y_center width height
 
-with the bbox values normalized to 0-1 and the confidence appended as an
-extra column (use it later to filter the candidates; YOLO training ignores
-the extra column if the files are used as-is).
+with all four bbox values in 0-1. Only detections at or above ``--conf``
+are written; the confidence value itself is not kept in the file.
 
 These are model-generated pseudo-labels, NOT verified ground truth. The
 script does not compare against any existing annotations.
@@ -102,8 +101,7 @@ def write_label(label_path: Path, boxes) -> None:
     with open(label_path, "w") as f:
         for b in boxes or []:
             x, y, w, h = b.xywhn[0].tolist()          # normalized YOLO format
-            c = float(b.conf[0])
-            f.write(f"{int(b.cls[0])} {x:.6f} {y:.6f} {w:.6f} {h:.6f} {c:.6f}\n")
+            f.write(f"{int(b.cls[0])} {x:.6f} {y:.6f} {w:.6f} {h:.6f}\n")
 
 
 def run_labeling(args: argparse.Namespace) -> None:
@@ -189,7 +187,7 @@ def run_labeling(args: argparse.Namespace) -> None:
     print(f"  Elapsed:                   {elapsed:.1f}s  ({rate:.1f} img/s)")
     print(f"  Labels saved to:           {labels_root}")
     print("  Line format:               <class> x_center y_center width height "
-          "confidence  (normalized 0-1)")
+          "(normalized 0-1)")
 
 
 if __name__ == "__main__":

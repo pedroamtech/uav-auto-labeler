@@ -1,37 +1,25 @@
-# Full dependency set for this project.
-#
-#   Run from the project root, WITH the YOLOv12 repo cloned next to it:
-#     GitHub/
-#       uav-auto-labeler/   <- you are here
-#       YOLOv12/            <- https://github.com/pedroamtech/YOLOv12
+# Self-contained. From the project root, in a fresh env:
 #
 #   conda create -n uav-auto-labeler python=3.11 -y
 #   conda activate uav-auto-labeler
 #   pip install -r requirements.txt
 #
-# See README "Environment setup" for details.
+# No extra repos to clone, no `git` needed, works offline. See README.
 
-# --- PyTorch: CUDA 12.8 builds (RTX 50-series / Blackwell, sm_120) ------------
+# --- PyTorch: CUDA 12.8 wheels (RTX 50-series / Blackwell, sm_120) ------------
 # The extra index serves the +cu128 wheels; PyPI serves everything else.
-# For CPU-only, drop the extra index and the +cu128 suffixes.
+# CPU-only or another CUDA build: drop the --extra-index-url line and the
+# `+cu128` suffixes (e.g. `torch==2.11.0`), or swap `cu128` for your toolkit.
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.11.0+cu128
 torchvision==0.26.0+cu128
 
-# --- YOLOv12 "ultralytics" fork (reports v8.3.63) ----------------------------
+# --- YOLOv12 "ultralytics" fork (v8.3.63) ------------------------------------
 # REQUIRED to load weights/best.pt (trained with this fork; its AAttn block
-# uses a fused `qkv` layer that the PyPI `ultralytics` package lacks).
-# Not on PyPI -> editable install from the sibling clone of
-# https://github.com/pedroamtech/YOLOv12 . This also pulls numpy,
-# opencv-python, pillow, pyyaml, scipy, pandas, matplotlib, tqdm, etc.
--e ../YOLOv12
+# uses a fused `qkv` layer the PyPI `ultralytics` package lacks). Not on PyPI,
+# so it is vendored here as a pure-Python wheel. pip still resolves its normal
+# runtime deps (numpy, opencv-python, pillow, pyyaml, scipy, pandas, tqdm, ...).
+./vendor/ultralytics-8.3.63-py3-none-any.whl
 
-# --- Exact training dependency set -----------------------------------------
-# The YOLOv12 fork was trained on Windows with this pinned list (timm,
-# albumentations, onnx/onnxruntime-gpu, supervision, wandb, gradio, ...).
-# Pulled in so inference runs against the same package versions as training.
-# torch/torchvision are intentionally NOT in that file (handled above).
--r ../YOLOv12/requirements-windows.txt
-
-# --- This project -----------------------------------------------------------
+# --- This project ---------------------------------------------------------
 tqdm

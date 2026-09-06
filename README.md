@@ -3,8 +3,8 @@
 Auto-labeling tool for aerial/UAV imagery using a locally trained **YOLOv12**
 model (single class `person`, id `0`; trained on VisDrone reduced to `nc: 1`,
 `names: ['person']`). It runs inference over an unannotated dataset and writes
-YOLO-format **pseudo-labels** next to the images, with the detection confidence
-appended as an extra column so you can filter the candidates before using them.
+standard normalized **YOLO-format pseudo-labels** (`class x y w h`, values in
+0-1) next to the images.
 
 > These are model-generated candidate labels, **not** verified ground truth.
 > The script does not validate against any existing annotations.
@@ -13,92 +13,77 @@ appended as an extra column so you can filter the candidates before using them.
 
 - [main.py](main.py) — entry point. Loads the model, runs inference, writes the labels.
 - [config.py](config.py) — default values for every CLI flag.
-- [requirements.txt](requirements.txt) — Python dependencies.
+- [requirements.txt](requirements.txt) — Python dependencies (self-contained).
+- [vendor/](vendor/) — bundled YOLOv12 `ultralytics` fork wheel (see below).
 
 ## Requirements
 
 - Anaconda / Miniconda
-- **Python 3.11** (required — the training dependency list pins
-  `onnxruntime-gpu==1.18.0`, which has no wheel for 3.12+)
+- Python 3.10–3.13 (3.11 recommended)
 - NVIDIA GPU with recent drivers (CPU works but is slow). The reference setup
   is an RTX 5060 Ti (Blackwell, `sm_120`) → **CUDA 12.8 wheels** (`cu128`).
 - Trained weights at `weights/best.pt` (or pass `--weights`)
 
-### Why the environment is not just `pip install ultralytics`
-
-`weights/best.pt` was trained with **YOLOv12-small** using the
-[pedroamtech/YOLOv12](https://github.com/pedroamtech/YOLOv12) fork (a fork of
-[sunsmarterjie/yolov12](https://github.com/sunsmarterjie/yolov12)) and its
-**bundled `ultralytics` fork** (reports version `8.3.63`; its `AAttn`
-attention block uses a fused `qkv` layer). Mainline `ultralytics` from PyPI
-(8.3.78+ / 8.4.x) ships a different YOLOv12 attention block (`AAttn` with
-separate `qk` + `v`), so it **cannot load these weights** and fails with:
-
-```
-AttributeError: 'AAttn' object has no attribute 'qkv'. Did you mean: 'qk'?
-```
-
-So this project installs the **YOLOv12 fork of `ultralytics`** (via
-`-e ../YOLOv12` in `requirements.txt`) instead of the PyPI `ultralytics`
-package — never `pip install ultralytics` into this environment.
-
 ## Environment setup (Anaconda)
 
-Clone the YOLOv12 repo **next to this one** (they must be siblings — the
-`-e ../YOLOv12` line in `requirements.txt` depends on it):
-
-```
-GitHub/
-  uav-auto-labeler/   <- this repo
-  YOLOv12/            <- https://github.com/pedroamtech/YOLOv12
-```
-
-Then, from the `uav-auto-labeler` root:
+From the repository root:
 
 ```powershell
-git clone https://github.com/pedroamtech/YOLOv12 ../YOLOv12   # if you don't have it
-
 conda create -n uav-auto-labeler python=3.11 -y
 conda activate uav-auto-labeler
 
 pip install -r requirements.txt
 ```
 
-`requirements.txt` installs **everything** in one shot:
+That is the whole setup — **no other repositories to clone**, `git` is not
+required, and it works offline. `requirements.txt` installs:
 
-- the CUDA 12.8 build of `torch` / `torchvision`;
-- the YOLOv12 `ultralytics` fork, editable from `../YOLOv12` (also pulls
-  numpy / opencv / pillow / pyyaml / scipy / pandas / matplotlib / tqdm);
-- `-r ../YOLOv12/requirements-windows.txt` — the exact pinned list the fork
-  was **trained** with on Windows (timm, albumentations, onnx /
-  onnxruntime-gpu, supervision, wandb, gradio, ...), so inference runs
-  against the same versions as training;
+- the CUDA 12.8 build of `torch` / `torchvision` (`--extra-index-url` +
+  `+cu128` pins);
+- `vendor/ultralytics-8.3.63-py3-none-any.whl` — the YOLOv12 fork of
+  `ultralytics`, bundled in this repo (see next section); pip resolves its
+  usual deps (numpy, opencv, pillow, pyyaml, scipy, pandas, tqdm, ...);
 - `tqdm`.
 
 Verify:
 
 ```powershell
-python -c "import ultralytics, torch; print(ultralytics.__version__, ultralytics.__file__); print('cuda', torch.cuda.is_available())"
-# -> 8.3.63  ...\GitHub\YOLOv12\ultralytics\__init__.py
+python -c "import ultralytics, torch; print(ultralytics.__version__); print('cuda', torch.cuda.is_available())"
+# -> 8.3.63
 # -> cuda True
 ```
 
 CPU-only or a different CUDA version: edit the `torch` lines in
-`requirements.txt` (drop `--extra-index-url` and the `+cu128` suffixes for
-CPU, or swap `cu128` for your toolkit, e.g. `cu124`).
+`requirements.txt` — drop `--extra-index-url` and the `+cu128` suffixes for
+CPU, or swap `cu128` for your toolkit (e.g. `cu124`).
 
 > `FlashAttention is not available on this device. Using scaled_dot_product_attention instead.`
 > is expected on Windows and harmless — PyTorch SDPA is used as the fallback.
 
-If you already have the training env (e.g. a conda env named `yolov12`), you
-can just reuse it and skip the steps above:
+### Why a bundled `ultralytics` wheel instead of `pip install ultralytics`
 
-```powershell
-C:\Users\pedroam\anaconda3\envs\yolov12\python.exe main.py
+`weights/best.pt` was trained with **YOLOv12-small** using the
+[pedroamtech/YOLOv12](https://github.com/pedroamtech/YOLOv12) fork (a fork of
+[sunsmarterjie/yolov12](https://github.com/sunsmarterjie/yolov12)) and its
+**bundled `ultralytics` fork** (version `8.3.63`; its `AAttn` attention block
+uses a fused `qkv` layer). Mainline `ultralytics` from PyPI (8.3.78+ / 8.4.x)
+ships a different YOLOv12 attention block (`AAttn` with separate `qk` + `v`),
+so it **cannot load these weights** and fails with:
+
+```
+AttributeError: 'AAttn' object has no attribute 'qkv'. Did you mean: 'qk'?
 ```
 
-As an alternative to matching versions, export the model to ONNX/TorchScript
-from the training environment and point `--weights` at the exported file.
+That fork is not on PyPI, so a pure-Python wheel built from it is checked in
+at [`vendor/ultralytics-8.3.63-py3-none-any.whl`](vendor/) and referenced
+directly from `requirements.txt`. **Never `pip install ultralytics` into this
+environment** — it would shadow the fork and break weight loading.
+
+To rebuild the vendored wheel from a fresh clone of the fork:
+
+```powershell
+pip wheel --no-deps -w vendor https://github.com/pedroamtech/YOLOv12
+```
 
 ## Dataset layout
 
@@ -153,14 +138,16 @@ All flags (`python main.py --help`):
 ## Output
 
 One `.txt` per image (with detections), in the `labels` tree that mirrors
-`images`. One line per detection, all bbox values normalized 0-1:
+`images`. One line per detection, standard normalized YOLO (all values 0-1),
+no confidence column:
 
 ```
-0 x_center y_center width height confidence
+0 x_center y_center width height
 ```
 
-By default no file is written for images with zero detections; pass
-`--save-empty` to create empty `.txt` files for those too.
+Only detections at or above `--conf` are written. By default no file is
+written for images with zero detections; pass `--save-empty` to create
+empty `.txt` files for those too.
 
 The console prints where the labels went plus a summary:
 
@@ -179,7 +166,7 @@ Labeling complete.
   Total detections:          98123
   Elapsed:                   761.2s  (23.8 img/s)
   Labels saved to:           C:\Users\pedroam\Documents\Dataset\Okutama-Action\labels
-  Line format:               <class> x_center y_center width height confidence  (normalized 0-1)
+  Line format:               <class> x_center y_center width height (normalized 0-1)
 ```
 
 ## Related projects

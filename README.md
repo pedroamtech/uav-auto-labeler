@@ -1,19 +1,25 @@
 # UAV Auto Labeler: Automatic Person Pre-Labeling for Aerial Imagery Datasets
 
-Auto-labeling tool for aerial/UAV imagery using a locally trained **YOLOv12**
-model (single class `person`, id `0`; trained on VisDrone reduced to `nc: 1`,
-`names: ['person']`). It runs inference over an unannotated dataset and writes
-standard normalized **YOLO-format pseudo-labels** (`class x y w h`, values in
-0-1) next to the images.
+Auto-labeling tool for aerial/UAV imagery. It runs one or two person
+detectors over an unannotated dataset and writes standard normalized
+**YOLO-format pseudo-labels** (`class x y w h`, values in 0-1) next to the
+images. Detectors (`--model`):
+
+| `--model` | detector | notes |
+|---|---|---|
+| `yolov12` | local YOLOv12-small fine-tuned on VisDrone (`weights/best.pt`, `nc: 1`, `person`) | best on high-altitude nadir frames with tiny people |
+| `rfdetr` | RF-DETR (COCO), `person` class only | best on lower/oblique frames, people ≥ ~40 px |
+| `union` *(default)* | run both, merge per image (dedupe by IoU) | highest recall; also writes per-box provenance |
 
 > These are model-generated candidate labels, **not** verified ground truth.
-> The script does not validate against any existing annotations.
+> Intended for a human review pass afterward (see [visualize.py](visualize.py)).
 
 ## Structure
 
-- [main.py](main.py) — entry point. Loads the model, runs inference, writes the labels.
+- [main.py](main.py) — entry point. Runs the chosen detector(s), writes the labels.
+- [visualize.py](visualize.py) — draw the labels over the images for review.
 - [config.py](config.py) — default values for every CLI flag.
-- [requirements.txt](requirements.txt) — Python dependencies (self-contained).
+- [requirements.txt](requirements.txt) — Python dependencies.
 - [vendor/](vendor/) — bundled YOLOv12 `ultralytics` fork wheel (see below).
 
 ## Requirements
@@ -35,15 +41,19 @@ conda activate uav-auto-labeler
 pip install -r requirements.txt
 ```
 
-That is the whole setup — **no other repositories to clone**, `git` is not
-required, and it works offline. `requirements.txt` installs:
+One `conda create` + one `pip install`. `requirements.txt` installs:
 
 - the CUDA 12.8 build of `torch` / `torchvision` (`--extra-index-url` +
   `+cu128` pins);
 - `vendor/ultralytics-8.3.63-py3-none-any.whl` — the YOLOv12 fork of
   `ultralytics`, bundled in this repo (see next section); pip resolves its
   usual deps (numpy, opencv, pillow, pyyaml, scipy, pandas, tqdm, ...);
-- `tqdm`.
+- `rfdetr` + `opencv-python` — for `--model rfdetr` / `union`. Both models
+  run in this one env (tested together: torch 2.11+cu128, numpy 2.x,
+  transformers 5.x). **`rfdetr` needs network to install** (no offline
+  wheel) and downloads its checkpoint (~386 MB) to `~/.roboflow/models/`
+  on first use. If you only ever use `--model yolov12`, you can delete the
+  `rfdetr` / `opencv-python` lines.
 
 Verify:
 
@@ -88,12 +98,14 @@ pip wheel --no-deps -w vendor https://github.com/pedroamtech/YOLOv12
 ## Dataset layout
 
 Point `--source` at the dataset root (the folder that contains `images`).
-Labels are written to a sibling `labels` folder, mirroring any subfolders:
+Run it once per dataset. Labels are written to a sibling `labels` folder
+(and `labels_meta` for `union`), mirroring any subfolders:
 
 ```
-D:\Dataset\Okutama-Action\
-  images\  Drone1\ Morning\ ... \frame.jpg
-  labels\  Drone1\ Morning\ ... \frame.txt   <- created by the script
+D:\Dataset\<name>\
+  images\       ... \frame.jpg
+  labels\       ... \frame.txt    <- created by the script
+  labels_meta\  ... \frame.json   <- created by --model union / --meta
 ```
 
 You can also pass `--source` the `images` folder directly. If the source path
@@ -102,72 +114,98 @@ has no `images` folder, pass `--labels <folder>` to set the output explicitly.
 ## Usage
 
 ```powershell
-conda activate uav-auto-labeler          # or use the training env's python directly
+conda activate uav-auto-labeler
 
 # quick end-to-end test first
 python main.py --limit 20
 
-# full run
-python main.py --source C:\Users\pedroam\Documents\Dataset\Okutama-Action
+# full run, one dataset at a time
+python main.py --source C:\Users\pedroam\Documents\Dataset\Okutama-Action --model union
+python main.py --source C:\Users\pedroam\Documents\Dataset\Cenidet-UAV   --model union
 ```
 
-Common overrides:
+Pick the detector with `--model`:
 
 ```powershell
-python main.py --source D:\Dataset\Okutama-Action --conf 0.35 --device 0
-python main.py --source D:\Dataset\Okutama-Action --batch 8          # lower if the GPU stalls / OOMs
-python main.py --source D:\Dataset\Okutama-Action --save-empty       # empty .txt when no detection
+python main.py --source D:\Dataset\X --model yolov12          # local VisDrone model only
+python main.py --source D:\Dataset\X --model rfdetr           # RF-DETR only
+python main.py --source D:\Dataset\X --model union            # both, merged (recommended)
+```
+
+Other common overrides:
+
+```powershell
+python main.py --source D:\Dataset\X --model union --conf 0.4 --rf-conf 0.35 --iou 0.6
+python main.py --source D:\Dataset\X --batch 8                # lower if the GPU stalls / OOMs
+python main.py --source D:\Dataset\X --save-empty             # empty .txt when no detection
 python main.py --source D:\some\folder --labels D:\some\folder_labels
 ```
 
 All flags (`python main.py --help`):
 
-| Flag           | Default (from `config.py`)                          | Description |
-|----------------|----------------------------------------------------|-------------|
-| `--source`     | `C:\Users\pedroam\Documents\Dataset\Okutama-Action` | Dataset root (with an `images` folder) or an images folder; searched recursively |
-| `--labels`     | derived (`images` -> `labels`)                      | Explicit output folder for the `.txt` files |
-| `--weights`    | `weights/best.pt`                                   | Trained `.pt` weights |
-| `--conf`       | `0.25`                                              | Minimum detection confidence |
-| `--imgsz`      | `640`                                               | Inference resolution |
-| `--device`     | auto (`cuda:0` if available, else `cpu`)            | `cpu`, `mps`, CUDA index (`0`), or unset for auto |
-| `--batch`      | `16`                                               | Images per inference batch; lower it on GPU stalls (Windows CUDA sysmem fallback) or OOM |
-| `--limit`      | `0`                                                | Process only the first N images (`0` = all); for a quick test |
-| `--save-empty` | off                                                | Also write an empty `.txt` for images with no detection |
-| `--verbose`    | off                                                | Per-image Ultralytics logs |
+| Flag              | Default (`config.py`)                                | Description |
+|-------------------|-----------------------------------------------------|-------------|
+| `--source`        | `…\Dataset\Okutama-Action`                          | Dataset root (with an `images` folder) or an images folder; searched recursively |
+| `--labels`        | derived (`images` -> `labels`)                      | Explicit output folder for the `.txt` files |
+| `--model`         | `union`                                             | `yolov12` \| `rfdetr` \| `union` |
+| `--weights`       | `weights/best.pt`                                   | YOLOv12 `.pt` weights (`yolov12` / `union`) |
+| `--conf`          | `0.45`                                              | YOLOv12 confidence threshold |
+| `--rf-conf`       | `0.30`                                              | RF-DETR confidence threshold (`rfdetr` / `union`) |
+| `--rf-checkpoint` | `medium`                                            | RF-DETR size: `nano` \| `small` \| `medium` \| `base` \| `large` |
+| `--iou`           | `0.55`                                              | `union`: boxes from the two models with IoU ≥ this are the same person |
+| `--imgsz`         | `640`                                               | YOLOv12 inference resolution |
+| `--device`        | auto (`cuda:0` if available)                        | `cpu`, `mps`, CUDA index (`0`), or unset for auto |
+| `--batch`         | `16`                                               | Images per inference batch; lower it on GPU stalls (Windows CUDA sysmem fallback) or OOM |
+| `--limit`         | `0`                                                | Process only the first N images (`0` = all) |
+| `--meta` / `--no-meta` | on for `union`, off otherwise                 | Write `labels_meta/<…>.json` with per-box provenance |
+| `--save-empty`    | off                                                | Also write an empty `.txt` for images with no detection |
+| `--verbose`       | off                                                | Per-image detector logs |
 
 ## Output
 
-One `.txt` per image (with detections), in the `labels` tree that mirrors
-`images`. One line per detection, standard normalized YOLO (all values 0-1),
-no confidence column:
+`labels/` mirrors `images/`. One `.txt` per image with detections, standard
+normalized YOLO (values 0-1), **no confidence column**:
 
 ```
 0 x_center y_center width height
 ```
 
-Only detections at or above `--conf` are written. By default no file is
-written for images with zero detections; pass `--save-empty` to create
-empty `.txt` files for those too.
+With `--model union` (or `--meta`), a parallel `labels_meta/` tree holds one
+`.json` per image with the source of every box, to guide the review:
 
-The console prints where the labels went plus a summary:
-
+```json
+[{"box": [0.51, 0.62, 0.03, 0.08], "conf": 0.82, "src": "both"},
+ {"box": [0.71, 0.55, 0.02, 0.06], "conf": 0.44, "src": "rfdetr"}]
 ```
-[1/3] Loading model: weights\best.pt
-[2/3] Images:  18103 under C:\Users\pedroam\Documents\Dataset\Okutama-Action\images
-      Labels:  C:\Users\pedroam\Documents\Dataset\Okutama-Action\labels
-      conf=0.25  imgsz=640  batch=16  device=cuda:0
-[3/3] Labeling images...  (the first batch also does model/GPU warm-up, so the bar can sit at 0% for a bit)
-Labeling: 100%|██████████| 18103/18103 [12:41<00:00, 23.8img/s]
 
-Labeling complete.
-  Images processed:          18103
-  Images with detections:    15980
-  Images without detections: 2123  (no .txt written)
-  Total detections:          98123
-  Elapsed:                   761.2s  (23.8 img/s)
-  Labels saved to:           C:\Users\pedroam\Documents\Dataset\Okutama-Action\labels
-  Line format:               <class> x_center y_center width height (normalized 0-1)
+`src` is `yolov12`, `rfdetr`, or `both`. `visualize.py` colours boxes by it
+(green = both, cyan = yolov12 only, orange = rfdetr only).
+
+The console ends with a summary (images processed, boxes written, and for
+`union` the per-source split, elapsed time, and the output paths).
+
+## Review the labels
+
+```powershell
+python visualize.py --source C:\Users\pedroam\Documents\Dataset\Okutama-Action
 ```
+
+Draws 60 random labelled frames (`--sample 0` for all) into
+`review/<dataset>/`, boxes coloured by provenance when `labels_meta/` exists.
+Use it to spot and delete non-person / false-positive boxes before training.
+
+## Two datasets — which model
+
+Measured on 300-image samples (`conf` 0.3, both models):
+
+| dataset | YOLOv12 vs RF-DETR (person) | recommendation |
+|---|---|---|
+| **Okutama-Action** (oblique drone, people ≥ ~40 px) | RF-DETR **+36 %** recall, near-superset of YOLOv12, low noise | `union` (or `rfdetr`) |
+| **Cenidet-UAV** (mixed, many nadir <30 px, vehicle-heavy) | roughly a tie; RF-DETR misses tiny nadir people but sees cars as noise | `union`, expect more junk to prune |
+
+`union` recovers what each model misses (YOLOv12 → tiny nadir people;
+RF-DETR → mid-altitude and occluded people); the review pass removes the
+false positives RF-DETR adds on the vehicle-heavy frames.
 
 ## Related projects
 

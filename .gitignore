@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 
+# visualize.py output
+review/
+
 # Ignore model checkpoints in general, but keep the released inference weights.
 *.pt
 !weights/best.pt

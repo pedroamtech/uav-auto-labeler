@@ -21,5 +21,13 @@ torchvision==0.26.0+cu128
 # runtime deps (numpy, opencv-python, pillow, pyyaml, scipy, pandas, tqdm, ...).
 ./vendor/ultralytics-8.3.63-py3-none-any.whl
 
+# --- RF-DETR (only for --model rfdetr / union) ------------------------------
+# On PyPI. Pulls transformers, supervision, av. Needs network to install
+# (no offline wheel) and downloads its checkpoint (~386 MB) to
+# ~/.roboflow/models/ on first use. Coexists with the YOLOv12 fork above in
+# one env (tested: torch 2.11+cu128, numpy 2.x, transformers 5.x).
+rfdetr
+opencv-python
+
 # --- This project ---------------------------------------------------------
 tqdm

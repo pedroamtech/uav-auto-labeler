@@ -26,8 +26,10 @@ torchvision==0.26.0+cu128
 # (no offline wheel) and downloads its checkpoint (~386 MB) to
 # ~/.roboflow/models/ on first use. Coexists with the YOLOv12 fork above in
 # one env (tested: torch 2.11+cu128, numpy 2.x, transformers 5.x).
-rfdetr
-opencv-python
+# Pinned: rfdetr's API has changed across releases (see main.py's predict_rfdetr),
+# an unpinned upgrade could silently change behavior or break it outright.
+rfdetr==1.10.1
+opencv-python==4.11.0.86
 
 # --- This project ---------------------------------------------------------
-tqdm
+tqdm==4.70.0

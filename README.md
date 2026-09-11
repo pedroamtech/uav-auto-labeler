@@ -41,7 +41,10 @@ conda activate uav-auto-labeler
 pip install -r requirements.txt
 ```
 
-One `conda create` + one `pip install`. `requirements.txt` installs:
+One `conda create` + one `pip install`. Every dependency in
+`requirements.txt` is version-pinned (`==`), so installs are reproducible
+and an unrelated upstream release can't silently change behavior — bump a
+pin deliberately (and re-test) rather than leaving it open. `requirements.txt` installs:
 
 - the CUDA 12.8 build of `torch` / `torchvision` (`--extra-index-url` +
   `+cu128` pins);
